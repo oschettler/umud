@@ -17,7 +17,7 @@ wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 with open('wlan.json') as f:
     conf = ujson.load(f)
-    wlan.connect(conf['ssid'], conf['pwd'))
+    wlan.connect(conf['ssid'], conf['pwd'])
 while wlan.isconnected() == False:
     pass
 display.text(wlan.ifconfig()[0], 0, 0)
@@ -54,6 +54,16 @@ class Room:
                 "exits": self.exits
             }, f)
 
+    def exits_html(self):
+        print(self.exits)
+        return ''.join([
+        '<li><a href="/{}">{}</a></li>'.format(x['room'], x['title'])
+        for x in self.exits]) 
+
+    def exits_text(self):
+        return '\n'.join(['{} {}'.format(x['room'], x['title'])
+        for x in self.exits])
+
 
 def html(title, body):
     return '''<html><head><title>{} - ESPmud</title>
@@ -65,27 +75,28 @@ def html(title, body):
 </body>
 </html>'''.format(title, body)
 
-        
+
 def room_page(room):
-    print(room.exits)
-    exits = ''.join([
-        '<li><a href="/{}">{}</a></li>'.format(x['room'], x['title']) 
-        for x in room.exits])
     return html(room.title, '''
-  <h1>{}</h1>
+  <h1>{} <a href="/edit/{}">✎</a></h1>
   <p>{}</p>
-  <ul>{}</ul>'''.format(room.title, room.description, exits))
+  <ul>{}</ul>'''.format(room.title, room.name, room.description, room.exits_html()))
 
 
-def create_page(name):
-    return html('Create ' + name, '''
-  <h1>Create {}</h1>
+def room_form(name, room=None):
+    verb = 'Edit' if room else 'Create'
+    title = room.title if room else ''
+    description = room.description if room else ''
+    exits = room.exits_text() if room else ''
+
+    return html(verb + ' ' + name, '''
+  <h1>{} {}</h1>
   <form action="/{}" method="POST">
-    <input name="title" placeholder="Title"><br>
-    <textarea name="description" rows="4" placeholder="Description"></textarea><br>
-    <textarea name="exits" rows="4" placeholder="Exits"></textarea><br>
+    <input name="title" placeholder="Title" value="{}"><br>
+    <textarea name="exits" rows="4" placeholder="Exits">{}</textarea><br>
+    <textarea name="description" rows="4" placeholder="Description">{}</textarea><br>
     <button type="submit">Save</button>
-  </form>'''.format(name, name))
+  </form>'''.format(verb, name, name, title, exits, description))
 
 
 def name(path):
@@ -93,9 +104,14 @@ def name(path):
     
 
 def get(conn, path):
-    match = ure.match(r'^/create/(.+)', path)
+    match = ure.match(r'^/edit/(.+)', path)
     if match:
-        response = create_page(match.group(1))
+        room_name = match.group(1)
+        room = Room.load(room_name)
+        if room:
+            response = room_form(room_name, room)
+        else:
+            response = room_form(room_name)
         conn.send('HTTP/1.1 200 OK\n')
         conn.send('Content-Type: text/html\n')
     else:
@@ -108,7 +124,7 @@ def get(conn, path):
         else:
             response = ''
             conn.send('HTTP/1.1 302 Redirect\n')
-            conn.send('Location: /create/' + name + '\n')
+            conn.send('Location: /edit/' + name + '\n')
 
     conn.send('Connection: close\n\n')
     conn.sendall(response)
@@ -142,10 +158,13 @@ s.listen(5)
 while True:
     conn, addr = s.accept()
     print('Got a connection from %s' % str(addr))
-    request = conn.recv(2048)
+    request = str(conn.read())
+
+    print(request)
     verb, path, rest = str(request).split(None, 2)
     if verb[2:] == 'POST':
         headers, vars = rest.split(r'\r\n\r\n', 1)
+        print(vars, [ v.split('=') for v in vars.split('&') ])
         vars = dict([ v.split('=') for v in vars.split('&') ])
         post(conn, path, vars)
     else:
