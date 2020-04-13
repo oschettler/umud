@@ -1,0 +1,9 @@
+{
+  "title": "Die Eingangshalle",
+  "description": "Du befindest dich in einer geräumigen Halle. An der hohen Decke hängt ein üppiger Kronleuchter. Rechts des Einganges ist eine Tür. Vor dir führt eine breite Freitreppe in die oberen Etagen.",
+  "exits": [
+    { "room": "door", "title": "Tür" },
+    { "room": "stairs", "title": "Freitreppe" }
+  ]
+}
+
