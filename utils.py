@@ -1,3 +1,4 @@
+# https://forum.micropython.org/viewtopic.php?t=3076
 _hextobyte_cache = None
 
 def unquote(string):

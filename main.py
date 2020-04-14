@@ -146,22 +146,25 @@ def get(conn, path):
 
 
 def post(conn, path, vars):
+    conn.send('HTTP/1.1 302 Redirect\n')
     room_name = name(path)
-    exits = [ dict(line.split(None, 1)) for line in vars['exits'].split(r'\n') ]
-    room = Room(
-       room_name,
-       vars['title'],
-       vars['description'],
-       exits)
-    room.save()
+    try:
+        exits = dict([ line.split(None, 1) for line in vars['exits'].split('\r\n') ])
+    except:
+        conn.send('Location: /edit/' + room_name + '\n')
+    else:
+        room = Room(
+            room_name,
+            vars['title'],
+            vars['description'],
+            exits)
+        room.save()
     
-    response = ''
-    conn.send('HTTP/1.1 302 Redirect\n') 
     conn.send('Location: ' + path + '\n')
     conn.send('Connection: close\n\n')
 
     try:
-        conn.sendall(response)
+        conn.sendall('')
     except OSError:
         print("Timeout")
     finally:
@@ -189,10 +192,10 @@ while True:
 
     if verb[2:] == 'POST':
         headers, vars = rest[:-1].split(r'\r\n\r\n', 1)
-        print(vars, [ v.split('=') for v in vars.split('&') ])
         vars = dict([ v.split('=') for v in vars.split('&') ])
-        for key, value in vars:
-            vars[key] = unquote(value)
+        for key, value in vars.items():
+            vars[key] = unquote(value.replace('+', ' ')).decode('utf-8')
+        print(vars)
         post(conn, path, vars)
     else:
         get(conn, path)
