@@ -5,11 +5,17 @@ except:
 import ujson
 import sys
 import ure
-import ssd1306
-from machine import I2C, Pin
-i2c=I2C(-1, Pin(5), Pin(4))
-display = ssd1306.SSD1306_I2C(128, 32, i2c)
-display.fill(0)
+from utils import unquote
+
+if GO:
+    GO.lcd.clear()
+    GO.lcd.font(GO.lcd.FONT_DejaVu24, color=GO.lcd.GREEN)
+else:
+    import ssd1306
+    from machine import I2C, Pin
+    i2c=I2C(-1, Pin(5), Pin(4))
+    display = ssd1306.SSD1306_I2C(128, 32, i2c)
+    display.fill(0)
 
 from random import getrandbits
 import network
@@ -20,8 +26,12 @@ with open('wlan.json') as f:
     wlan.connect(conf['ssid'], conf['pwd'])
 while wlan.isconnected() == False:
     pass
-display.text(wlan.ifconfig()[0], 0, 0)
-display.show()
+
+if GO:
+    GO.lcd.text(GO.lcd.CENTER, GO.lcd.CENTER, wlan.ifconfig()[0])
+else:
+    display.text(wlan.ifconfig()[0], 0, 0)
+    display.show()
 
 class Room:
     def __init__(self, name, title, description, exits):
@@ -57,12 +67,12 @@ class Room:
     def exits_html(self):
         print(self.exits)
         return ''.join([
-        '<li><a href="/{}">{}</a></li>'.format(x['room'], x['title'])
-        for x in self.exits]) 
+        '<li><a href="/{}">{}</a></li>'.format(room, title)
+        for room, title in self.exits.items()]) 
 
     def exits_text(self):
-        return '\n'.join(['{} {}'.format(x['room'], x['title'])
-        for x in self.exits])
+        return '\n'.join(['{} {}'.format(room, title)
+        for room, title in self.exits.items()])
 
 
 def html(title, body):
@@ -124,16 +134,20 @@ def get(conn, path):
         else:
             response = ''
             conn.send('HTTP/1.1 302 Redirect\n')
-            conn.send('Location: /edit/' + name + '\n')
+            conn.send('Location: /edit/' + room_name + '\n')
 
-    conn.send('Connection: close\n\n')
-    conn.sendall(response)
-    conn.close()
+    try:
+        conn.send('Connection: close\n\n')
+        conn.sendall(response)
+    except OSError:
+        print("ERR: Timeout")
+    finally:
+        conn.close()
 
 
 def post(conn, path, vars):
     room_name = name(path)
-    exits = [ line.split(None, 1) for line in vars['exits'].split(r'\n') ]
+    exits = [ dict(line.split(None, 1)) for line in vars['exits'].split(r'\n') ]
     room = Room(
        room_name,
        vars['title'],
@@ -145,8 +159,13 @@ def post(conn, path, vars):
     conn.send('HTTP/1.1 302 Redirect\n') 
     conn.send('Location: ' + path + '\n')
     conn.send('Connection: close\n\n')
-    conn.sendall(response)
-    conn.close()
+
+    try:
+        conn.sendall(response)
+    except OSError:
+        print("Timeout")
+    finally:
+        conn.close()
 
 
 #-------------
@@ -158,14 +177,22 @@ s.listen(5)
 while True:
     conn, addr = s.accept()
     print('Got a connection from %s' % str(addr))
-    request = str(conn.read())
+    request = str(conn.recv(2048))
 
     print(request)
-    verb, path, rest = str(request).split(None, 2)
+
+    try:
+        verb, path, rest = str(request).split(None, 2)
+    except:
+        print("ERR: Empty request")
+        continue
+
     if verb[2:] == 'POST':
-        headers, vars = rest.split(r'\r\n\r\n', 1)
+        headers, vars = rest[:-1].split(r'\r\n\r\n', 1)
         print(vars, [ v.split('=') for v in vars.split('&') ])
         vars = dict([ v.split('=') for v in vars.split('&') ])
+        for key, value in vars:
+            vars[key] = unquote(value)
         post(conn, path, vars)
     else:
         get(conn, path)
